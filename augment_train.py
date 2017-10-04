@@ -12,7 +12,7 @@ TRAIN_CROPS_FOLDER  = 'train_crops'
 TRAIN_IMAGES_FOLDER = 'train_images'
 
 PATCH_SIZE   = 384
-PATCH_MARGIN = 64
+PATCH_MARGIN = 64  # it's really PATCH_MARGIN/2 on each side
 
 def angle_diff(x, y):
     return np.arctan2(np.sin(x-y), np.cos(x-y))
