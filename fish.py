@@ -53,27 +53,6 @@ valid_loader = DataLoader(dataset,
                       num_workers=1,
                       pin_memory=True)
 
-
-# Define your model EXACTLY as if you were using nn.Module
-class Network(nn.Module):
-    def __init__(self):
-        super(Network, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3)
-        self.fc1 = nn.Linear(64*(((((PATCH_SIZE-2)//2) - 2)//2)**2), 128)
-        self.fc2 = nn.Linear(128, 8)
-
-    def forward(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), 2))
-        x = F.relu(F.max_pool2d(self.conv2(x), 2))
-        x = x.view(-1, 64*(((((PATCH_SIZE-2)//2) - 2)//2)**2))
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return nn.LogSoftmax()(x)
-
-
-
-
 class FishNet(nn.Module):
     def __init__(self):
         super(FishNet, self).__init__()
@@ -83,18 +62,18 @@ class FishNet(nn.Module):
             *list(self.resnet_model.children())[:-1]
         )
         self.class_fc1 = nn.Linear(self.num_ftrs, 512)
-        self.class_fc2 = nn.Linear(512, 8)
-        self.reg_fc1 = nn.Linear(self.num_ftrs, 512)
-        self.reg_fc2 = nn.Linear(512, 1)
+        self.class_fc2 = nn.Linear(512, 9)
 
     def forward(self, x):
         x = self.features(x)
         x = x.view(-1,self.num_ftrs )
-        species = F.relu(self.class_fc1(x))
-        species = nn.LogSoftmax()(self.class_fc2(species))
-        length  = F.relu(self.reg_fc1(x))
-        length  = F.relu(self.reg_fc2(length))
-        return species, length
+        species_length = F.relu(self.class_fc1(x))
+        species_length = self.class_fc2(species_length)
+        _species = species_length.clone()[:,:8,...]
+        _length  = species_length.clone()[:, 8,...]
+        species_length[:,:8,...] = nn.LogSoftmax()(_species)
+        species_length[:, 8,...] = F.relu(_length)
+        return species_length
 
 model = FishNet()
 print(model)
@@ -118,10 +97,6 @@ for param in model.features.parameters():
 #model.fc = nn.Sequential(*class_head)
 
 model    = model.cuda()
-#print(model)
-
-#model = Network().cuda()
-#print(model)
 
 trainer = ModuleTrainer(model)
 
@@ -135,13 +110,25 @@ metrics = [CategoricalAccuracy()]
 
 optimizer = optim.Adam([ 
     { 'params': model.class_fc1.parameters() }, 
-    { 'params': model.class_fc2.parameters() }, 
-    { 'params': model.reg_fc1.parameters() }, 
-    { 'params': model.reg_fc2.parameters() }, ], lr= 1e-2)
+    { 'params': model.class_fc2.parameters() },  ], lr= 1e-2)
 #    { 'params': model.layer4.parameters(), 'lr': 1e-3 },
 #    { 'params': model.layer3.parameters(), 'lr': 1e-4 }, ], lr= 1e-2)
 
-trainer.compile(loss=['nll_loss', 'mse_loss'],
+def species_length_loss(input, target):
+
+    input_species = input[:,:8]
+    input_length  = input[:, 8]
+
+    target_species = target[:,0].long()
+    target_length  = target[:,1]
+
+    input_length = input_length * (target_species != 7).float()
+
+    loss = nn.MSELoss()(input_length, target_length) * 1e-5 + F.nll_loss(input_species, target_species) 
+
+    return loss
+
+trainer.compile(loss=species_length_loss,
                 optimizer=optimizer,
                 #regularizers=regularizers,
                 #constraints=constraints,

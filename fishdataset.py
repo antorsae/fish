@@ -48,7 +48,7 @@ class FishDataset(Dataset):
         self.images_dir = images_dir
         self.transform  = transform
         self.num_inputs  = 1
-        self.num_targets = 2
+        self.num_targets = 1
 
     def __len__(self):
         return len(self.fish_frame)
@@ -64,7 +64,11 @@ class FishDataset(Dataset):
         species[7]  = 1 if np.all(species[:7] == 0) else 0
         species = np.argmax(species)
 
+        species_length = np.float32([species, length])
+
         if self.transform:
             image = self.transform(image)
 
-        return image, (species, length)
+
+        #species_length = (species, length)
+        return image, species_length
