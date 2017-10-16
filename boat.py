@@ -31,7 +31,8 @@ import pandas as pd
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('-gtc', '--generate-test-crops', action='store_true', help='Generate test crops loading model')
+parser.add_argument('-gtc', '--generate-test-crops', action='store_true', help='Generate test crops loading model (videos and images)')
+parser.add_argument('-gio', '--generate-images-only', action='store_true', help='When used with -gtc only generate images')
 parser.add_argument('-lm', '--load-model', type=str, help='Load model from file')
 parser.add_argument('-cs', '--crop-size', type=int, default = 384, help='Crop size')
 parser.add_argument('-cm', '--crop-margin', type=int, default = 64, help='Crop margin (really half of this on each side)')
@@ -47,6 +48,7 @@ PATCH_SIZE = 224
 FRAMES_PER_VIDEO = 2
 TEST_FOLDER = 'test_videos'
 TEST_CROPS_FOLDER = 'test_crops'
+TEST_IMAGES_FOLDER = 'test_images'
 BOAT_ANGLES_CSV = 'boat_angles.csv'
 
 class BoatNet(nn.Module):
@@ -183,19 +185,26 @@ if args.generate_test_crops:
         M = cv2.getAffineTransform(np.float32((p0,p1,p2)), dp)
 
         video_in  = cv2.VideoCapture(os.path.join(TEST_FOLDER, video_id) + '.mp4')
-        fourcc    = cv2.VideoWriter_fourcc(*'MJPG')
-        video_out = cv2.VideoWriter(os.path.join(TEST_CROPS_FOLDER, video_id)  + '_' +str(int(angle)) + '.avi',fourcc, 15., (CROP_SIZE,CROP_SIZE))
+        if not args.generate_images_only:
+            fourcc    = cv2.VideoWriter_fourcc(*'MJPG')
+            video_out = cv2.VideoWriter(os.path.join(TEST_CROPS_FOLDER, video_id)  + '_' +str(int(angle)) + '.avi',fourcc, 15., (CROP_SIZE,CROP_SIZE))
+            
         rot_video = np.empty([CROP_SIZE,CROP_SIZE,3], dtype=np.float32)
 
+        it = 0
         while(video_in.isOpened()):
             ret, frame = video_in.read()
             if ret==True:
                 rot_video = cv2.warpAffine(frame,M,(CROP_SIZE,CROP_SIZE))
-                video_out.write(rot_video)
+                if not args.generate_images_only:
+                    video_out.write(rot_video)
+                cv2.imwrite(os.path.join(TEST_IMAGES_FOLDER, video_id) + '_' + str(it) + '.png', rot_video)
+                it += 1
             else:
                 break
         video_in.release()
-        video_out.release()
+        if not args.generate_images_only:
+            video_out.release()
 else:
 
     dataset = BoatDataset(
