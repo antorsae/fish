@@ -12,6 +12,7 @@ import glob
 import iterm
 import random
 import copy
+import re
 
 import cv2
 
@@ -78,10 +79,11 @@ class SubsetRandomBalancedBatchSampler(Sampler):
         batch_size (integer)
     """
 
-    def __init__(self, indices, class_vector, batch_size):
+    def __init__(self, indices, class_vector, batch_size, same_class_per_minibatch=False):
         self.indices = indices
         self.class_vector = class_vector
         self.batch_size = batch_size
+        self.same_class_per_minibatch = same_class_per_minibatch
 
         self.classes = np.unique(self.class_vector)
         self.class_map = { }
@@ -94,7 +96,7 @@ class SubsetRandomBalancedBatchSampler(Sampler):
     def __iter__(self): 
         batch = []
         for it in range(len(self.indices)):
-            if True: #it % self.batch_size == 0:
+            if True: #(same_class_per_minibatch == False) and (it % self.batch_size == 0):
                 c = int(np.random.choice(self.classes, 1))
             l = self.running_class_map[c]
             if len(l) > 0:
@@ -111,7 +113,6 @@ class SubsetRandomBalancedBatchSampler(Sampler):
             yield batch
 
     def __len__(self):
-        #return len(self.indices)
         return (len(self.indices) + self.batch_size - 1) // self.batch_size
 
 ######################################################################
@@ -134,9 +135,59 @@ class SubsetSampler(Sampler):
 
 ######################################################################
 
+class SeqDataset(Dataset):
+
+    def __init__(self, test_csv_file, gt_csv_file=None, transform=None):
+        """
+        Args:
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.num_inputs  = 1
+
+        test_frame   = pd.read_csv(test_csv_file).set_index(['video_id', 'frame'])
+
+        if gt_csv_file:
+            self.num_targets = 1
+            gt_frame = pd.read_csv(gt_csv_file)
+
+            species_columns = [ 'species_fourspot', 'species_grey sole', 'species_other', 'species_plaice', 
+            'species_summer', 'species_windowpane', 'species_winter']
+
+            gt_frame['species_no_fish'] = 1 - gt_frame[species_columns].sum(axis=1)
+
+            species_columns.append('species_no_fish')
+            
+            for (video_id, frame), video_id_gt_frame in gt_frame.groupby(('video_id', 'frame')):
+
+                test_frame.loc(axis=0)[(video_id, frame)][species_columns] = video_id_gt_frame[species_columns].values.squeeze()
+                #print(test_frame[test_frame[video_id]['frame']==video_id_gt_frame['frame']])
+                #video_id_test_frame = test_frame.loc(video_id).set_index('frame')
+                #assert len(video_id_test_frame) == len(video_id_gt_frame)
+
+
+
+        else:
+            self.num_targets = 0
+
+
+        self.transform  = transform
+    
+    def __len__(self):
+        return len(self.test_frame)
+
+    def __getitem__(self, idx):
+
+        if self.num_targets == 0:
+            return image
+
+        return image, (species_length, 0.)
+
+######################################################################
+
 class FishDataset(Dataset):
 
-    def __init__(self, csv_file, images_dir, videos_dir=None, transform=None):
+    def __init__(self, csv_file, images_dir, boat_ids_csv=None, videos_dir=None, transform=None):
         """
         Args:
             transform (callable, optional): Optional transform to be applied
@@ -149,13 +200,28 @@ class FishDataset(Dataset):
         if csv_file:
             self.num_targets = 2
             self.fish_frame = pd.read_csv(csv_file)
+            if boat_ids_csv:
+                boad_ids_frame =  pd.read_csv(boat_ids_csv).set_index('video_id')
+                n_boats = len(boad_ids_frame['boat_id'].unique())
+            else:
+                boad_ids_frame = None
 
             classes = []
             species = np.empty((8,), dtype='int')
             for idx in range(len(self.fish_frame)):
                 species[:7] = self.fish_frame.ix[idx, 'species_fourspot':].as_matrix().astype('int')
                 species[7]  = 1 if np.all(species[:7] == 0) else 0
-                classes.append(np.argmax(species))
+                _class = np.argmax(species)
+
+                # stratify by boat_id too if CSV provided
+                if boad_ids_frame is not None:
+                    video_id = self.fish_frame.ix[idx, 'video_id']
+                    boat_id = int(boad_ids_frame.get_value(video_id, 'boat_id'))
+                    _class = boat_id * 8 + _class
+                classes.append(_class)
+
+            print(np.bincount(classes))
+
             self.classes = np.int32(classes)
         else:
             self.num_targets = 0
@@ -171,13 +237,18 @@ class FishDataset(Dataset):
             self.videos_dir = videos_dir
             self.total_images = 0
             self.video_frames = [ ] 
+            self.video_index = [ ] 
             for video_filename in sorted(glob.glob(os.path.join(self.videos_dir, '*.avi'))):
                 vin = cv2.VideoCapture(video_filename)
                 frames = int(vin.get(cv2.CAP_PROP_FRAME_COUNT))
                 vin.release()
+                video_id = re.sub(r'.*([0-9a-zA-Z]{16})(\-True|\-False)?(_\-?\d+)?\.(mp4|avi)', r'\1', video_filename)
                 self.video_frames.append((self.total_images, video_filename))
+                for it in range(frames):
+                    self.video_index.append(((self.total_images + it), video_filename, it, video_id))
                 self.total_images += frames
             self.video_frames_frame = pd.DataFrame(self.video_frames, columns=['frames', 'video_filename']).set_index('frames')
+            self.video_index_frame  = pd.DataFrame(self.video_index,  columns=['frame', 'video_filename', 'base_frame', 'video_id']).set_index('frame')
 
             self.video_filename = None
             self.vin = None

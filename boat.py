@@ -90,12 +90,8 @@ class BoatNet(nn.Module):
         x_c = F.relu(self.class_fc2(x_c))
         x_c = nn.Dropout(p=0.05)(x_c)
         x_c = F.relu(self.class_fc3(x_c))
-#        x_c = nn.Dropout(p=0.05)(x_c)
 
         xy      =  self.class_xy(x_c)
-#        xy      =  F.hardtanh(self.class_xy(x_c),    -256,256) / 1.  # [-1, 1]
-#        xy    =  F.hardtanh(self.class_xy(x_c),    -60,60) / (60.) # [-1, 1]
-        #angle   =  F.hardtanh(self.class_angle(x_c), -120,120) / (120.) # [-1, 1]
         boat_id =  nn.LogSoftmax()(self.class_boat_id(x_c))
         return  xy, boat_id
 
@@ -112,12 +108,10 @@ optimizer = optim.Adam([
     { 'params': model.class_fc2.parameters() }, 
     { 'params': model.class_fc3.parameters() }, 
     { 'params': model.class_xy.parameters() },
-    #{ 'params': model.class_angle.parameters()},
     { 'params': model.class_boat_id.parameters()},
     { 'params': model.features.layer4.parameters() },
     { 'params': model.features.layer3.parameters(), 'lr' : 1e-6 },
     { 'params': model.features.layer2.parameters(), 'lr' : 1e-6 },
-#    { 'params': model.features.layer2.parameters() , 'lr' : 1e-3},
     ], lr= 1e-5)
 
 if args.load_model:
@@ -188,7 +182,7 @@ if args.generate_test_crops:
         if not args.generate_images_only:
             fourcc    = cv2.VideoWriter_fourcc(*'MJPG')
             video_out = cv2.VideoWriter(os.path.join(TEST_CROPS_FOLDER, video_id)  + '_' +str(int(angle)) + '.avi',fourcc, 15., (CROP_SIZE,CROP_SIZE))
-            
+
         rot_video = np.empty([CROP_SIZE,CROP_SIZE,3], dtype=np.float32)
 
         it = 0
