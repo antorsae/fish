@@ -137,51 +137,80 @@ class SubsetSampler(Sampler):
 
 class SeqDataset(Dataset):
 
-    def __init__(self, test_csv_file, gt_csv_file=None, transform=None):
+    def __init__(self, X_csv_file, Y_csv_file=None, transform=None, return_numpy=True):
         """
         Args:
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
         self.num_inputs  = 1
+        self.X = pd.read_csv(X_csv_file).set_index('video_id')
+        self.n_videos = self.X.index.unique().shape[0]
+        self.max_length = 0 # self.X['frame'].max()
+        self.X_unique = self.X.index.unique()
+        for idx in range(self.n_videos):
+            self.max_length  = max(self.max_length , self.X.loc[self.X_unique[idx]].values.shape[0])
+        self.n_features = 8
+        self.return_numpy = return_numpy
 
-        test_frame   = pd.read_csv(test_csv_file).set_index(['video_id', 'frame'])
-
-        if gt_csv_file:
+        if Y_csv_file:
             self.num_targets = 1
-            gt_frame = pd.read_csv(gt_csv_file)
-
-            species_columns = [ 'species_fourspot', 'species_grey sole', 'species_other', 'species_plaice', 
-            'species_summer', 'species_windowpane', 'species_winter']
-
-            gt_frame['species_no_fish'] = 1 - gt_frame[species_columns].sum(axis=1)
-
-            species_columns.append('species_no_fish')
-            
-            for (video_id, frame), video_id_gt_frame in gt_frame.groupby(('video_id', 'frame')):
-
-                test_frame.loc(axis=0)[(video_id, frame)][species_columns] = video_id_gt_frame[species_columns].values.squeeze()
-                #print(test_frame[test_frame[video_id]['frame']==video_id_gt_frame['frame']])
-                #video_id_test_frame = test_frame.loc(video_id).set_index('frame')
-                #assert len(video_id_test_frame) == len(video_id_gt_frame)
-
-
-
+            self.Y = pd.read_csv(Y_csv_file).set_index('video_id')
+            self.Y_unique = self.Y.index.unique()
+            #assert self.X_unique == self.Y_unique
+            print(self.X_unique)
+            print(self.Y_unique)
+            assert self.n_videos == self.Y.index.unique().shape[0]
+            print(self.max_length)
+            print(self.Y['frame'].max())
+            #assert self.max_length == self.Y['frame'].max()
         else:
             self.num_targets = 0
-
 
         self.transform  = transform
     
     def __len__(self):
-        return len(self.test_frame)
+        return self.n_videos
 
     def __getitem__(self, idx):
 
+        x = self.X.loc[self.X_unique[idx]][self.X.columns[2:]].values[:self.max_length]
+        if not self.return_numpy:
+            x = th.FloatTensor(x)
+ 
         if self.num_targets == 0:
-            return image
+            return x
 
-        return image, (species_length, 0.)
+        y = self.Y.loc[self.Y_unique[idx]][self.Y.columns[2:]].values[:self.max_length]
+        if not self.return_numpy:
+            y = th.FloatTensor(y)
+
+        return x, y
+
+def collate_seqs(inputs):
+    batch_size = len(inputs)
+    n_groups = len(inputs[0])
+    groups = []
+    for i in range(n_groups):
+        group = [input[i] for input in inputs]
+        groups.append(group)
+    return groups
+
+    print(inputs[0])
+    print(inputs[1])
+
+    n_features = [inputs[0][i].size()[1] for i in range(groups)]
+    print(n_features)
+    batch_lengths = [input[0].size()[0] for input in inputs]
+    max_length = max(batch_lengths)
+
+    collated = [th.zeros((max_length, batch_size, _n_features)) for _n_features in n_features]
+    print(collated)
+    for group in range(groups):
+        for i, (input, length) in enumerate(zip(inputs, batch_lengths)):
+            collated[group][:length, i, :] = input[group]
+    return collated
+
 
 ######################################################################
 
