@@ -9,15 +9,15 @@ import torch.optim as optim
 from collections import OrderedDict
 import itertools
 
-from torchsample.modules import ModuleTrainer
-from torchsample.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-from torchsample.regularizers import L1Regularizer, L2Regularizer
-from torchsample.constraints import UnitNorm
-from torchsample.initializers import XavierUniform
-from torchsample.metrics import CategoricalAccuracy
-from torchsample import TensorDataset
-from torchsample.transforms.affine_transforms import RandomRotate
-from torchsample.transforms.tensor_transforms import RandomCrop, RandomFlip, SpecialCrop
+#from torchsample.modules import ModuleTrainer
+#from torchsample.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+#from torchsample.regularizers import L1Regularizer, L2Regularizer
+#from torchsample.constraints import UnitNorm
+#from torchsample.initializers import XavierUniform
+#from torchsample.metrics import CategoricalAccuracy
+#from torchsample import TensorDataset
+#from torchsample.transforms.affine_transforms import RandomRotate
+#from torchsample.transforms.tensor_transforms import RandomCrop, RandomFlip, SpecialCrop
 
 import os
 from torchvision import datasets, transforms, models

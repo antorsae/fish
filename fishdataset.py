@@ -9,7 +9,6 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import Sampler
 from torchvision import transforms, utils
 import glob
-import iterm
 import random
 import copy
 import re
@@ -470,6 +469,7 @@ class BoatDataset(Dataset):
 
                 # change to True to view inline with iterm
                 if False and np.random.randint(50) == 0:
+                    import iterm
                     frame[:,int(x//SCALE)-2:int(x//SCALE)+2] = (0,255,0)
                     frame[int(y//SCALE)-2:int(y//SCALE)+2,:] = (0,255,0)
                     iterm.show_image(frame[:,:,:])
