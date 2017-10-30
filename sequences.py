@@ -9,16 +9,6 @@ import torch.optim as optim
 from collections import OrderedDict
 import itertools
 
-from torchsample.modules import ModuleTrainer
-from torchsample.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-from torchsample.regularizers import L1Regularizer, L2Regularizer
-from torchsample.constraints import UnitNorm
-from torchsample.initializers import XavierUniform
-from torchsample.metrics import CategoricalAccuracy
-from torchsample import TensorDataset
-from torchsample.transforms.affine_transforms import RandomRotate
-from torchsample.transforms.tensor_transforms import RandomCrop, RandomFlip, SpecialCrop
-
 import os
 from torchvision import datasets, transforms, models
 
@@ -27,7 +17,7 @@ from sklearn.model_selection import train_test_split
 import argparse
 import pandas as pd
 import numpy as np
-from masked_cross_entropy import compute_loss
+from masked_cross_entropy import compute_xe_loss, compute_mse_loss
 
 parser = argparse.ArgumentParser()
 
@@ -40,7 +30,7 @@ parser.add_argument('-s', '--suffix',  type=str, default=None, help='Suffix to s
 args = parser.parse_args()
 
 class SeqFishNet(nn.Module):
-    def __init__(self, max_length, batch_size, n_features, hidden_size = 10, num_layers = 1):
+    def __init__(self, max_length, batch_size, n_features, hidden_size = 256, num_layers = 2):
         super(SeqFishNet, self).__init__()
         self.max_length = max_length
         self.batch_size = batch_size
@@ -57,11 +47,10 @@ class SeqFishNet(nn.Module):
 
         self.rnn_final = nn.LSTM(
             input_size= 2 * self.hidden_size, 
-            hidden_size = 2,
+            hidden_size = 1,
             bidirectional = False,
             )
 
-        self.output_linear = nn.Linear(2*self.hidden_size, 2)
 
     def forward(self, inputs):
 
@@ -105,7 +94,7 @@ print(model)
 initial_epoch = 0
 
 
-optimizer = optim.SGD([ 
+optimizer = optim.RMSprop([ 
     { 'params': model.parameters() }, 
     ], lr= args.learning_rate, momentum=0.9)
 
@@ -175,9 +164,22 @@ for epoch in range(100):
 
             return packed_input, batch_lengths_order
 
+        def chainsaw(x):
+            npx = x.numpy()
+            _, counts = np.unique(npx, return_counts=True)
+            saw = np.empty_like(npx).squeeze(axis=1)
+            frame_index = 0
+            for count in counts:
+                saw[frame_index:frame_index+count] = np.linspace(1.,0.,count)
+                frame_index += count
+            saw = th.autograd.Variable(th.FloatTensor(np.expand_dims(saw, axis=1)), requires_grad=False)
+            return saw
+
+
         #print(len(targets))
         #print("--------------------")
-        targets = [target[:,8:9].remainder(2) for target in targets] # keep only fish number mod 2
+        #targets = [target[:,8:9].remainder(2) for target in targets] # keep only fish number mod 2
+        targets = [chainsaw(target[:,8:9]) for target in targets] # keep only fish number mod 2
         #print(targets)
         #print("--------------------")
         data,   _ = pack_batches(inputs)
@@ -188,7 +190,7 @@ for epoch in range(100):
         #print(data)
         output, output_lengths = model(data)
         output_lengths = Variable(th.LongTensor(output_lengths))
-        target = th.squeeze(target, dim=2).long()
+        #target = th.squeeze(target, dim=2)
         #print(output)
         #print(output.size())
         #print("O --------------------")
@@ -214,17 +216,21 @@ for epoch in range(100):
             loss: An average loss value masked by the length.
         """
 
-        loss = compute_loss(output.cpu(), target.cpu(), output_lengths.cpu())
+        #loss = compute_xe_loss(output.cpu(), target.cpu(), output_lengths.cpu())
+        loss = compute_mse_loss(output.cpu(), target.cpu(), output_lengths.cpu())
         #loss = nn.CrossEntropyLoss()(output, target)
+        optimizer.zero_grad()
+
         loss.backward()
         optimizer.step()
         if batch_idx % 10 == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx, len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.data[0]))
-        if batch_idx % 100 == 0:
-            #print(output)
-            #print(target)
+        if batch_idx % 10 == 0:
+            print(target[0,:40])
+            print(output[0,:40])
+
             pass
 
 

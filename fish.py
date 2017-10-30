@@ -1,3 +1,5 @@
+# train (using transfer learning with imagenet resnet-152 as base model) a classifier (fish species + no fish) and regressor (lenth)
+# on a per-frame basis
 
 import torch as th
 import torch.nn as nn

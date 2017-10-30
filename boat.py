@@ -1,3 +1,5 @@
+# use to train a DL model that learns where the action on a per-frame basis 
+# or to generate (-gtc) videos/images of leveled and centered crops for test videos (loading a saved model)
 
 import torch as th
 import torch.nn as nn

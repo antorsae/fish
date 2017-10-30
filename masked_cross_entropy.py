@@ -1,8 +1,6 @@
 import torch
 from torch.autograd import Variable
 
-
-
 def _sequence_mask(sequence_length, max_len=None):
     if max_len is None:
         max_len = sequence_length.data.max()
@@ -17,7 +15,7 @@ def _sequence_mask(sequence_length, max_len=None):
     return seq_range_expand < seq_length_expand
 
 
-def compute_loss(logits, target, length):
+def compute_xe_loss(logits, target, length):
     """
     Args:
         logits: A Variable containing a FloatTensor of size
@@ -43,6 +41,34 @@ def compute_loss(logits, target, length):
     losses_flat = -torch.gather(log_probs_flat, dim=1, index=target_flat)
     # losses: (batch, max_len)
     losses = losses_flat.view(*target.size())
+    # mask: (batch, max_len)
+    mask = _sequence_mask(sequence_length=length, max_len=target.size(1))
+    losses = losses * mask.float()
+    loss = losses.sum() / length.float().sum()
+    return loss
+
+def compute_mse_loss(pred, target, length):
+    """
+    Args:
+        pred: A Variable containing a FloatTensor of size
+            (batch, max_len, dim)
+        target: A Variable containing a FloatTensor of size
+            (batch, max_len, dim)
+        length: A Variable containing a LongTensor of size (batch,)
+            which contains the length of each data in a batch.
+
+    Returns:
+        loss: An average loss value masked by the length.
+    """
+
+    # logits_flat: (batch * max_len, dim)
+    pred_flat = pred.view(-1, pred.size(-1))
+    # target_flat: (batch * max_len, dim)
+    target_flat = target.view(-1, target.size(-1))
+    # losses_flat: (batch * max_len)
+    losses_flat = torch.norm(pred_flat - target_flat, 2, dim=1)
+    # losses: (batch, max_len)
+    losses = losses_flat.view(*target.size()[:2])
     # mask: (batch, max_len)
     mask = _sequence_mask(sequence_length=length, max_len=target.size(1))
     losses = losses * mask.float()

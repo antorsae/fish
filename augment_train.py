@@ -1,3 +1,5 @@
+# use this to generate centered and leveled videos/imagesets and CSV with boat ids,xy centroids and rotation angles
+
 import pandas as pd
 from os.path import join
 import numpy as np
